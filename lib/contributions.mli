@@ -2,8 +2,6 @@ module Datetime : sig
   type t = string
 end
 
-val query : string
-
 type item = {
   repo : string;
   kind : [`Issue | `PR | `Review of string | `New_repo ];
@@ -24,8 +22,12 @@ val of_yojson : Yojson.Safe.t -> t
 
 val to_yojson : t -> Yojson.Safe.t
 
+type user =
+  | Viewer
+  | Explicit of string
+
 module Fetch : functor (C : Cohttp_lwt.S.Client) -> sig
-  val exec : period:(string * string) -> token:Token.t -> Yojson.Safe.t Lwt.t
+  val exec : user:user -> period:(string * string) -> token:Token.t -> Yojson.Safe.t Lwt.t
 end
 
 val of_json : from:string -> Yojson.Safe.t -> t

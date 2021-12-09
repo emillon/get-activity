@@ -2,9 +2,68 @@ module Json = Yojson.Safe
 
 let ( / ) a b = Json.Util.member b a
 
-let query =
+type user =
+  | Viewer
+  | Explicit of string
+
+let query_viewer =
   {| query($from: DateTime!, $to: DateTime!) {
-   viewer {
+   user: viewer {
+    contributionsCollection(from: $from, to: $to) {
+      user {
+        login
+      }
+      issueContributions(first: 100) {
+        nodes {
+          occurredAt
+          issue {
+            url
+            title
+            body
+            repository { nameWithOwner }
+          }
+        }
+      }
+      pullRequestContributions(first: 100) {
+        nodes {
+          occurredAt
+          pullRequest {
+            url
+            title
+            body
+            repository { nameWithOwner }
+          }
+        }
+      }
+      pullRequestReviewContributions(first: 100) {
+        nodes {
+          occurredAt
+          pullRequestReview {
+            url
+            pullRequest { title }
+            body
+            state
+            comments(first: 100) { nodes { body } }
+            repository { nameWithOwner }
+          }
+        }
+      }
+      repositoryContributions(first: 100) {
+        nodes {
+          occurredAt
+          repository {
+            url
+            nameWithOwner
+          }
+        }
+      }
+    }
+  }
+}|}
+
+let query_explicit =
+  {| query($login: String!, $from: DateTime!, $to: DateTime!) {
+   user(login: $login) {
     contributionsCollection(from: $from, to: $to) {
       user {
         login
@@ -60,13 +119,17 @@ let query =
 module Fetch (C : Cohttp_lwt.S.Client) = struct
 
   module G = Graphql.Make(C)
-  let exec ~period:(start, finish) ~token =
+  let exec ~user ~period:(start, finish) ~token =
     let variables = [
-          "from", `String start;
-          "to", `String finish;
-      ] in
-      G.exec token ~variables query
-end
+        "from", `String start;
+        "to", `String finish;
+    ] in
+    match user with
+    | Viewer -> G.exec token ~variables query_viewer
+    | Explicit login ->
+      let variables = ("login", `String login) :: variables in
+      G.exec token ~variables query_explicit
+  end
 
 module Datetime = struct
   type t = string
@@ -166,8 +229,8 @@ type t = {
 }
 
 let of_json ~from json =
-  let contribs = json / "data" / "viewer" / "contributionsCollection" in
-  let username = json / "data" / "viewer" / "contributionsCollection" / "user" / "login" |> Json.Util.to_string in
+  let contribs = json / "data" / "user" / "contributionsCollection" in
+  let username = json / "data" / "user" / "contributionsCollection" / "user" / "login" |> Json.Util.to_string in
   let items =
     read_issues  (contribs / "issueContributions") @
     read_prs     (contribs / "pullRequestContributions") @
